@@ -118,12 +118,42 @@ void BatchNormRistrettoLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype> *> &bo
         const Dtype scale_factor = this->blobs_[2]->cpu_data()[0] == 0 ? 0 : 1 / this->blobs_[2]->cpu_data()[0];
         caffe_cpu_scale(this->variance_.count(), scale_factor, this->blobs_[0]->cpu_data(), this->mean_.mutable_cpu_data());
         caffe_cpu_scale(this->variance_.count(), scale_factor, this->blobs_[1]->cpu_data(), this->variance_.mutable_cpu_data());
+
+        // trim mean and variance  ---- wxrui
+        int rounding = this->phase_ == TEST ? this->rounding_ : QuantizationParameter_Rounding_STOCHASTIC;
+        this->QuantizeWeights_cpu(this->blobs_, rounding, true);
     }
     else
     {
         // compute mean
         caffe_cpu_gemv<Dtype>(CblasNoTrans, this->channels_ * num, spatial_dim, 1. / (num * spatial_dim), bottom_data, this->spatial_sum_multiplier_.cpu_data(), 0., this->num_by_chans_.mutable_cpu_data());
         caffe_cpu_gemv<Dtype>(CblasTrans, num, this->channels_, 1., this->num_by_chans_.cpu_data(), this->batch_sum_multiplier_.cpu_data(), 0., this->mean_.mutable_cpu_data());
+
+        // trim mean  ---- wxrui
+        int rounding = this->phase_ == TEST ? this->rounding_ : QuantizationParameter_Rounding_STOCHASTIC;
+        int cnt = this->mean_.count()
+        int bit_width = this->bw_layer_in_
+        int fl = this->fl_layer_in_
+        data = this->mean_.mutable_cpu_data()
+        for (int index = 0; index < cnt; ++index) {
+            // Saturate data
+            Dtype max_data = (pow(2, bit_width - 1) - 1) * pow(2, -fl);
+            Dtype min_data = -pow(2, bit_width - 1) * pow(2, -fl);
+            data[index] = std::max(std::min(data[index], max_data), min_data);
+            // Round data
+            data[index] /= pow(2, -fl);
+            switch (rounding) {
+            case QuantizationParameter_Rounding_NEAREST:
+                data[index] = round(data[index]);
+                break;
+            case QuantizationParameter_Rounding_STOCHASTIC:
+                data[index] = floor(data[index] + RandUniform_cpu());
+                break;
+            default:
+                break;
+            }
+            data[index] *= pow(2, -fl);
+        }
     }
 
     // subtract mean
@@ -136,6 +166,32 @@ void BatchNormRistrettoLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype> *> &bo
         caffe_powx(top[0]->count(), top_data, Dtype(2), this->temp_.mutable_cpu_data()); // (X-EX)^2
         caffe_cpu_gemv<Dtype>(CblasNoTrans, this->channels_ * num, spatial_dim, 1. / (num * spatial_dim), this->temp_.cpu_data(), this->spatial_sum_multiplier_.cpu_data(), 0., this->num_by_chans_.mutable_cpu_data());
         caffe_cpu_gemv<Dtype>(CblasTrans, num, this->channels_, 1., this->num_by_chans_.cpu_data(), this->batch_sum_multiplier_.cpu_data(), 0., this->variance_.mutable_cpu_data()); // E((X_EX)^2)
+
+        // trim variance  ---- wxrui
+        int rounding = this->phase_ == TEST ? this->rounding_ : QuantizationParameter_Rounding_STOCHASTIC;
+        int cnt = this->variance_.count()
+        int bit_width = this->bw_layer_in_
+        int fl = this->fl_layer_in_
+        data = this->variance_.mutable_cpu_data()
+        for (int index = 0; index < cnt; ++index) {
+            // Saturate data
+            Dtype max_data = (pow(2, bit_width - 1) - 1) * pow(2, -fl);
+            Dtype min_data = -pow(2, bit_width - 1) * pow(2, -fl);
+            data[index] = std::max(std::min(data[index], max_data), min_data);
+            // Round data
+            data[index] /= pow(2, -fl);
+            switch (rounding) {
+            case QuantizationParameter_Rounding_NEAREST:
+                data[index] = round(data[index]);
+                break;
+            case QuantizationParameter_Rounding_STOCHASTIC:
+                data[index] = floor(data[index] + RandUniform_cpu());
+                break;
+            default:
+                break;
+            }
+            data[index] *= pow(2, -fl);
+        }
 
         // compute and save moving average
         this->blobs_[2]->mutable_cpu_data()[0] *= this->moving_average_fraction_;
@@ -157,10 +213,6 @@ void BatchNormRistrettoLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype> *> &bo
     // TODO(cdoersch): The caching is only needed because later in-place layers
     //                 might clobber the data.  Can we skip this if they won't?
     caffe_copy(this->x_norm_.count(), top_data, this->x_norm_.mutable_cpu_data());
-
-    // Trim mean and variance
-    int rounding = this->phase_ == TEST ? this->rounding_ : QuantizationParameter_Rounding_STOCHASTIC;
-    this->QuantizeWeights_cpu(this->blobs_, rounding, true);
 }
 
 template <typename Dtype>
