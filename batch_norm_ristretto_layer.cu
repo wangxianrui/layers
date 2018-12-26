@@ -1,4 +1,8 @@
 #include <vector>
+#include <math.h>
+#include <algorithm>
+#include <stdlib.h>
+#include <time.h>
 
 #include "caffe/util/math_functions.hpp"
 #include "ristretto/base_ristretto_layer.hpp"
@@ -48,10 +52,10 @@ void BatchNormRistrettoLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype> *> &bo
 
         // trim mean  ---- wxrui
         int rounding = this->phase_ == TEST ? this->rounding_ : QuantizationParameter_Rounding_STOCHASTIC;
-        int cnt = this->mean_.count()
-        int bit_width = this->bw_layer_in_
-        int fl = this->fl_layer_in_
-        data = this->mean_.mutable_gpu_data()
+        int cnt = this->mean_.count();
+        int bit_width = this->bw_layer_in_;
+        int fl = this->fl_layer_in_;
+        Dtype *data = this->mean_.mutable_gpu_data();
         for (int index = 0; index < cnt; ++index) {
             // Saturate data
             Dtype max_data = (pow(2, bit_width - 1) - 1) * pow(2, -fl);
@@ -64,7 +68,7 @@ void BatchNormRistrettoLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype> *> &bo
                 data[index] = round(data[index]);
                 break;
             case QuantizationParameter_Rounding_STOCHASTIC:
-                data[index] = floor(data[index] + RandUniform_gpu());
+                data[index] = floor(data[index] + rand() / (RAND_MAX+1.0));
                 break;
             default:
                 break;
@@ -86,10 +90,10 @@ void BatchNormRistrettoLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype> *> &bo
 
         // trim variance  ---- wxrui
         int rounding = this->phase_ == TEST ? this->rounding_ : QuantizationParameter_Rounding_STOCHASTIC;
-        int cnt = this->variance_.count()
-        int bit_width = this->bw_layer_in_
-        int fl = this->fl_layer_in_
-        data = this->variance_.mutable_gpu_data()
+        int cnt = this->variance_.count();
+        int bit_width = this->bw_layer_in_;
+        int fl = this->fl_layer_in_;
+        Dtype *data = this->variance_.mutable_gpu_data();
         for (int index = 0; index < cnt; ++index) {
             // Saturate data
             Dtype max_data = (pow(2, bit_width - 1) - 1) * pow(2, -fl);
@@ -102,7 +106,7 @@ void BatchNormRistrettoLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype> *> &bo
                 data[index] = round(data[index]);
                 break;
             case QuantizationParameter_Rounding_STOCHASTIC:
-                data[index] = floor(data[index] + RandUniform_gpu());
+                data[index] = floor(data[index] + rand() / (RAND_MAX+1.0));
                 break;
             default:
                 break;

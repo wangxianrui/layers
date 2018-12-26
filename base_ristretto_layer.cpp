@@ -101,7 +101,7 @@ void BaseRistrettoLayer<Dtype>::Trim2FixedPoint_cpu(Dtype* data, const int cnt,
     default:
       break;
     }
-    data[index] *= pow(2, -fl);
+    data[index] *= pow(2, -fl); //do it in DQuantization
 	}
 }
 
