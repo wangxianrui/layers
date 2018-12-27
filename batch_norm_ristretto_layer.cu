@@ -36,7 +36,7 @@ void BatchNormRistrettoLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype> *> &bo
     if (this->use_global_stats_)
     {
         // use the stored mean/variance estimates.
-        const Dtype scale_factor = this->blobs_[2]->gpu_data()[0] == 0 ? 0 : 1 / this->blobs_[2]->gpu_data()[0];
+        const Dtype scale_factor = this->blobs_[2]->cpu_data()[0] == 0 ? 0 : 1 / this->blobs_[2]->cpu_data()[0];
         caffe_gpu_scale(this->variance_.count(), scale_factor, this->blobs_[0]->gpu_data(), this->mean_.mutable_gpu_data());
         caffe_gpu_scale(this->variance_.count(), scale_factor, this->blobs_[1]->gpu_data(), this->variance_.mutable_gpu_data());
 
@@ -49,32 +49,33 @@ void BatchNormRistrettoLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype> *> &bo
         // compute mean
         caffe_gpu_gemv<Dtype>(CblasNoTrans, this->channels_ * num, spatial_dim, 1. / (num * spatial_dim), bottom_data, this->spatial_sum_multiplier_.gpu_data(), 0., this->num_by_chans_.mutable_gpu_data());
         caffe_gpu_gemv<Dtype>(CblasTrans, num, this->channels_, 1., this->num_by_chans_.gpu_data(), this->batch_sum_multiplier_.gpu_data(), 0., this->mean_.mutable_gpu_data());
-
+        /*
         // trim mean  ---- wxrui
         int rounding = this->phase_ == TEST ? this->rounding_ : QuantizationParameter_Rounding_STOCHASTIC;
         int cnt = this->mean_.count();
         int bit_width = this->bw_layer_in_;
         int fl = this->fl_layer_in_;
-        Dtype *data = this->mean_.mutable_gpu_data();
+        //Dtype *data = this->mean_.mutable_gpu_data();
         for (int index = 0; index < cnt; ++index) {
             // Saturate data
             Dtype max_data = (pow(2, bit_width - 1) - 1) * pow(2, -fl);
             Dtype min_data = -pow(2, bit_width - 1) * pow(2, -fl);
-            data[index] = std::max(std::min(data[index], max_data), min_data);
+            this->mean_.mutable_gpu_data()[index] = std::max(std::min(this->mean_.mutable_gpu_data()[index], max_data), min_data);
             // Round data
-            data[index] /= pow(2, -fl);
+            this->mean_.mutable_gpu_data()[index] /= pow(2, -fl);
             switch (rounding) {
             case QuantizationParameter_Rounding_NEAREST:
-                data[index] = round(data[index]);
+                this->mean_.mutable_gpu_data()[index] = round(this->mean_.mutable_gpu_data()[index]);
                 break;
             case QuantizationParameter_Rounding_STOCHASTIC:
-                data[index] = floor(data[index] + rand() / (RAND_MAX+1.0));
+                this->mean_.mutable_gpu_data()[index] = floor(this->mean_.mutable_gpu_data()[index] + rand() / (RAND_MAX+1.0));
                 break;
             default:
                 break;
             }
-            data[index] *= pow(2, -fl);
+            this->mean_.mutable_gpu_data()[index] *= pow(2, -fl);
         }
+        */
     }
 
     // subtract mean
@@ -87,36 +88,37 @@ void BatchNormRistrettoLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype> *> &bo
         caffe_powx(top[0]->count(), top_data, Dtype(2), this->temp_.mutable_gpu_data()); // (X-EX)^2
         caffe_gpu_gemv<Dtype>(CblasNoTrans, this->channels_ * num, spatial_dim, 1. / (num * spatial_dim), this->temp_.gpu_data(), this->spatial_sum_multiplier_.gpu_data(), 0., this->num_by_chans_.mutable_gpu_data());
         caffe_gpu_gemv<Dtype>(CblasTrans, num, this->channels_, 1., this->num_by_chans_.gpu_data(), this->batch_sum_multiplier_.gpu_data(), 0., this->variance_.mutable_gpu_data()); // E((X_EX)^2)
-
+        /*
         // trim variance  ---- wxrui
         int rounding = this->phase_ == TEST ? this->rounding_ : QuantizationParameter_Rounding_STOCHASTIC;
         int cnt = this->variance_.count();
         int bit_width = this->bw_layer_in_;
         int fl = this->fl_layer_in_;
-        Dtype *data = this->variance_.mutable_gpu_data();
+        //Dtype *data = this->variance_.mutable_gpu_data();
         for (int index = 0; index < cnt; ++index) {
             // Saturate data
             Dtype max_data = (pow(2, bit_width - 1) - 1) * pow(2, -fl);
             Dtype min_data = -pow(2, bit_width - 1) * pow(2, -fl);
-            data[index] = std::max(std::min(data[index], max_data), min_data);
+            this->variance_.mutable_gpu_data()[index] = std::max(std::min(this->variance_.mutable_gpu_data()[index], max_data), min_data);
             // Round data
-            data[index] /= pow(2, -fl);
+            this->variance_.mutable_gpu_data()[index] /= pow(2, -fl);
             switch (rounding) {
             case QuantizationParameter_Rounding_NEAREST:
-                data[index] = round(data[index]);
+                this->variance_.mutable_gpu_data()[index] = round(this->variance_.mutable_gpu_data()[index]);
                 break;
             case QuantizationParameter_Rounding_STOCHASTIC:
-                data[index] = floor(data[index] + rand() / (RAND_MAX+1.0));
+                this->variance_.mutable_gpu_data()[index] = floor(this->variance_.mutable_gpu_data()[index] + rand() / (RAND_MAX+1.0));
                 break;
             default:
                 break;
             }
-            data[index] *= pow(2, -fl);
+            this->variance_.mutable_gpu_data()[index] *= pow(2, -fl);
         }
+        */
 
         // compute and save moving average
-        this->blobs_[2]->mutable_gpu_data()[0] *= this->moving_average_fraction_;
-        this->blobs_[2]->mutable_gpu_data()[0] += 1;
+        this->blobs_[2]->mutable_cpu_data()[0] *= this->moving_average_fraction_;
+        this->blobs_[2]->mutable_cpu_data()[0] += 1;
         caffe_gpu_axpby(this->mean_.count(), Dtype(1), this->mean_.gpu_data(), this->moving_average_fraction_, this->blobs_[0]->mutable_gpu_data());
         int m = bottom[0]->count() / this->channels_;
         Dtype bias_correction_factor = m > 1 ? Dtype(m) / (m - 1) : 1;
@@ -124,8 +126,8 @@ void BatchNormRistrettoLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype> *> &bo
     }
 
     // normalize variance
-    caffe_add_scalar(this->variance_.count(), this->eps_, this->variance_.mutable_gpu_data());
-    caffe_powx(this->variance_.count(), this->variance_.gpu_data(), Dtype(0.5), this->variance_.mutable_gpu_data());
+    caffe_gpu_add_scalar(this->variance_.count(), this->eps_, this->variance_.mutable_gpu_data());
+    caffe_gpu_powx(this->variance_.count(), this->variance_.gpu_data(), Dtype(0.5), this->variance_.mutable_gpu_data());
 
     // replicate variance to input size
     caffe_gpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, num, this->channels_, 1, 1, this->batch_sum_multiplier_.gpu_data(), this->variance_.gpu_data(), 0., this->num_by_chans_.mutable_gpu_data());
